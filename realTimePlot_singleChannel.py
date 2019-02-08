@@ -1,22 +1,20 @@
-# -*- encoding: utf-8 -*-
+#-*- encoding: utf-8 -*-
 
 """
-test_realTimeEEG_EDFfile.py 
+realTimePlot_singleChannel.py 
 
-Show an animation chunk by chunk (and hopefully in real-time) of 
-              1)   an EEG signal that is extracted from an EDF file. 
-              2)   the spectrogram of the EEG, chunk by chunk in (hopefully) real-time   ********************
+Show an animation "chunk by chunk" in real-time of both
+              1)   an EEG signal 
+              2)   the spectrogram of the EEG
 
-THIS PROGRAM WORKS ONLY FOR EEG FILE of EDF FORMAT.  NOT WITH LSL yet. 
-THE REAL_TIME ANIMATION WORKS ONLY FOR SIGNAL WITH SINGLE CHANNEL   --------------->  See the newer python script
+             For a single channel of a EEG that is extracted from an EDF file (not with LSL streaming yet)
 
-THE SIGNAL OBJEcT of EEG_EDFsignal class is doomed to be thoroughly modify in a newer script that must support multi-channel features. 
-
-
+WARNING: THE SIGNAL OBJEcT of EEG_EDFsignal class is doomed to be thoroughly modify in a newer script that must support multi-channel features. 
 
 """
-from abc import ABCMeta, abstractmethod    # to override an abstract method of an abstract class : It uses a decorator. 
-#from time import sleep
+## to override an abstract method of an abstract class : It uses a decorator. 
+from abc import ABCMeta, abstractmethod    
+import time 
 from collections import deque               
 
 import numpy as np
@@ -25,114 +23,17 @@ from numpy import pi, sin, cos, zeros, ones, log2, ceil
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.image as Image
-from matplotlib.lines import Line2D
+from matplotlib.lines import Line2D   
+
+from scipy.signal import spectrogram #, stft, periodogram, welch, cwt, morlet
+
+## # personal class for signals management: used to import EEG signal in EDF format 
+import signalClass as sC  
 
 
-from scipy.signal import spectrogram  #, stft, periodogram, welch, cwt, morlet
-
-
-
-##==========================================================================
-### EEG  signal from EDF file
-import pyedflib
-
-class EEG_EDFsignal():       
-    """
-    A class to manage EEG signals found in EDF format 
-    
-    format edf :  european data format 
-    About pyEDFlib :   https://pypi.org/project/pyEDFlib/  (install with Anaconda:  conda install -c conda-forge pyedflib)
-    https://pyedflib.readthedocs.io/en/latest/
-    REM: MNE software can also open EDF files    
-    """
-
-    def __init__(self, iChan=0, fileEDF = 'Subject00_1.edf',datapath = 'C:/Users/Moi2/Documents/DONNEES/EEG_physionet/EEG_arithmeticTasks/'):
-        '''
-        Default :  a specific edf file and its path are selected. 
-        
-        attributes: 
-        f
-        signals
-        tSignal
-        ySignal
-        iChan
-        selectedChannel
-        '''
-    
-        ## open EDF file and keep the file identifier as an attribute of the class
-        self.f = pyedflib.EdfReader(datapath+fileEDF ) #  pyedflib.edfreader.EdfReader object 
-        self.loadSignalEDF(iChan)
-        
-    def setEDFsignals(self):
-        '''
-        Use self.f 
-        And set : 
-            self.tSignal 
-            self.signals  : including ALL channels. 
-            self.signal_labels
-        '''           
-        nChannels = self.f.signals_in_file   # number of signal channels in the file. (ex 21 , 16, 8, 4  for EEG)
-    
-        ## We assume that all channel signals have the same number of samples.             
-        Nsamples = self.f.getNSamples()[0]   # length (in samples) of the 0-th channel signal, which is assumed to be the same for all signals.        
-        signals = zeros((nChannels, Nsamples))      
-        
-        ## The entire signal is already available:  
-        for iChannel in range(nChannels):      # i-th channel considered : 0, 1,....  (nChannels-1) 
-            signals[iChannel, :] = self.f.readSignal(iChannel)            
-        assert nChannels==signals.shape[0]  
-        assert Nsamples==signals.shape[1]  
-
-        self.signals =signals 
-        timeMax =Nsamples  # 91000  ONLY if sample_width= 1 ms or 1 s, i.e. fsampling =1 kHz  or 1 Hz (depending on units)
-        self.tSignal  = np.arange(timeMax)    
-        
-        self.signalLabels = self.f.getSignalLabels()
-           
-    
-    def loadSignalEDF(self, iChan):  
-        '''  
-        Import a complete EEG signal from EDF file. 
-        
-        Set 
-            Selected signal :        self.tSignal, self.ySignal ,self.selectedChannel , self.iChan
-            All channel signals:     self.signals,  self.signalLabels
-        '''
-        ## set self.tSignal ; self.signals; self.signal_labels        
-        self.setEDFsignals()            
-
-        ## selection of the channels that are considered 
-        self.iChan = iChan 
-        self.ySignal =  self.signals[iChan, :]
-        self.selectedChannel = self.signalLabels[iChan] 
-        print(" The channel %s is loaded"% self.selectedChannel)
-
-
-    def returnSignalChunk(self, index, nt, mode):
-        '''  CORRECT           
-        mode can be: 'reversed' ,  'non-reversed'. 
-        
-        USED in spectrogram, and SHOULD ALSO be used in the the signal plot 
-        '''''
-        
-        
-        if mode =='non-reversed':
-            tChunk = self.tSignal[index : index +nt ] 
-            yChunk = self.ySignal[index : index +nt]
-            
-        elif mode =='reversed':    
-            if index > 0:
-                tChunk = self.tSignal[index + nt -1 : index-1:-1 ] 
-                yChunk = self.ySignal[index + nt -1 : index-1:-1 ]
-            elif index==0: 
-                tChunk = self.tSignal[index + nt -1 ::-1 ] 
-                yChunk = self.ySignal[index + nt -1 ::-1 ]
-                
-        else:  
-            return 'GROS CACA'                       #   RAISE ERROR **********
-        return tChunk, yChunk  
-
+ 
 ### ================================================================================
+    
 ### deque handling : 
 def concatenateDeque(D, ny):
     """
@@ -143,44 +44,24 @@ def concatenateDeque(D, ny):
     np.array(D).shape = (nD, nx, ny)
     A.shape =  (nD*nx, ny)
     """
-    if ny == 1 :
-        ## must convert in a arrays with shape = (nx,)   instead of (1,nx)
-        #print(np.array(D).shape)                  # 
-        #print( np.array(D)         )              #  
-        concat =np.concatenate(np.array(D))       #  la concat est OK puor ny==1
-        #print(concat)
-        return concat    
-    elif ny > 1 :
-        
-        print(ny)        
-        print( D[0])
-        print( D[1])
-        
-        #   S2 = Sxx[:,::-1] 
-        print(type(D[0]))
-        print(len(D))                                   # 1                             2
-        print(D[0].shape)                            #(2,513)                  (le dernier "chunk" ) (2, 513)
-        print(D[1].shape)                            #(2,513)  
-        print(np.array(D)) 
-        print(np.array(D).shape)                     # (2, 2, 513)  OK
-        
-        concat =np.concatenate(np.array(D))  
-        print(concat.shape)                        #  (4,513),   i.e. : (nD*ntIm, ny)
-        return concat
-        #return np.concatenate(np.array(D))  
+    #if ny == 1 :
+    ## convert in a arrays with shape = (nx,)   instead of (1,nx)
+    concat =np.concatenate(np.array(D))       
+    return concat    
+    
+    #elif ny > 1 :
+    #    concat =np.concatenate(np.array(D))  
+    #    return concat
 
-"""
-Pour tdata
-np.array(D)[0].shape (2, 2)   //  concatenateDeque.shape = (2,)
 
-pour Sdata : 
-np.array(D)[0].shape  = (2,)   !!!!!?????
-"""
-### ================================================================================
-###  A abstract class. Cannot be instanced directly. The sendDataToUpdate() method is abstract (empty) and is defined only in derived classes.      
-class baseRealTimePlot(metaclass=ABCMeta):          #         
+
+class baseRealTimePlot(metaclass=ABCMeta):          
+    ### ================================================================================
+    ###  A abstract class. Cannot be instanced directly. The sendDataToUpdate() method 
+    ### is abstract (empty) and is defined only in derived classes.      
+    ### ================================================================================
+    
     """
-    An abstract class.  
     Draw the animation of a signal  chunk by chunk, for chunk of arbitrary size
     And for signal chunk OR image chunk 
     
@@ -207,11 +88,15 @@ class baseRealTimePlot(metaclass=ABCMeta):          #
         line
 
     Methods: 
-
-        getRightChunkLeftPoint()  
-        update( data)         AN abstract method
-        showAnimation()                  
-        sendDataToUpdate()  :    abstract method required to send data to update method via animation.FuncAnimation()
+        setDim(self, dim)
+        updateDeque(self, tdata, ydata, data)
+        initializeDeque(self,tchunk, ychunk )
+        getRightChunkLeftPoint(self, tdata, nt)
+        
+        showAnimation()     : used                   
+        update( data)       An abstract method
+        sendDataToUpdate()   An abstract method 
+        
         (abstract methods in python : Equivalent to C++ virtual functions )
         About abstract methods :   https://stackoverflow.com/questions/5856963/abstract-methods-in-python
         
@@ -225,7 +110,6 @@ class baseRealTimePlot(metaclass=ABCMeta):          #
             
             for ny>1  :
         '''
-        
         ## when yChunk is 1-dim:  line object: 
         ## case ny==1:  create a Line2D object to be added to ax object . 
         ##              tdata, ydata    
@@ -235,7 +119,6 @@ class baseRealTimePlot(metaclass=ABCMeta):          #
         
         ## set self.ny and self.nt
         self.setDim(dim)
-        
         self.maxt = maxt 
         self.dt = dt
         self.ymin = ymin
@@ -269,10 +152,10 @@ class baseRealTimePlot(metaclass=ABCMeta):          #
             print('format error  !! ')
 
     def initializeDeque(self,tchunk, ychunk ):
-        '''   Called from the derived classes.
+        '''   
         In each derived class, ydata may have a different structure 
         
-        tchunk and ychunk should have time reversed. 
+        tchunk and ychunk must be time-reversed order. 
         '''
         tdata = deque() 
         ydata = deque()          
@@ -282,10 +165,8 @@ class baseRealTimePlot(metaclass=ABCMeta):          #
     
     
     def updateDeque(self, tdata, ydata, data):
-        '''tdata and ydata are not member of the basic class : So they are returned 
-        
-          ***** SERAIT PEUT ETRE PLUS EFFICACE DE DECLARER tdata et ydata dans la classe de base      ****^^????
-                                        et d'utiliser self.tdata au lieu de tdata etc... 
+        '''
+        tdata and ydata are not member of the basic class : they are received as parameter and then returned. 
         '''
         
         if len(data) == 2 :
@@ -327,9 +208,9 @@ class baseRealTimePlot(metaclass=ABCMeta):          #
             ## Each element of tdata deque should have time reversed.
             ## tdata[0] : the last  ('most right') chunk that have been pushed in the deque. It is a list or a 1D array, that contains nt points.
             
+            # Check that time is reversed in the chunk
             assert tdata[0][-1]  <= tdata[0][0]    #  
-            
-            assert tdata[0][-1]  < tdata[0][0]    # Check that time is reversed in the chunk  
+                
             return tdata[0][0]
             
         if nt==1:
@@ -536,7 +417,6 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
         tSignalChunk, ySignalChunk= Signal.returnSignalChunk(0, self.nt, 'non-reversed')
         t, f, Sxx = self.computeSpectgram_scipy(tSignalChunk, ySignalChunk, PropOverlap=0.5)
         
-        
         ## initialization of ny, fmax, fmin  
         #assert self.ntIm == len(t)
         self.ny= len(f)     
@@ -546,10 +426,10 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
         self.fmin = min(f)
         self.fdata = f
         
-        self.image = self.ax.pcolorfast(t,f , Sxx )       # ***  f and t ARE already in increasing order. (never reversed), and NOT transposed
-            
-        #nD =8  
-        #self.ax.set_xlim( 0,  nD*self.ntIm*dt)   # pour tester 
+        ## pcolorfast is faster than pcolormesh, but without shading or interpolation 
+        ## returns an image.AxesImage object 
+        self.image = self.ax.pcolorfast(t,f , Sxx )    
+
         self.ax.set_xlim( 0,  self.maxt )   #        
         
         ## the extent of the data we want to display (apriori not the same as self.fmin and self.fmax)
@@ -558,11 +438,8 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
         ##  extend of actual data.  fmin = min(f) , and fmax = max(f)  
         extent = ( 0, self.ntIm*dt, self.fmin, self.fmax )  
         self.image.set_extent(extent) # extent is data axes (left, right, bottom, top) for making image plots    
-        '''
-        print(f.shape)   # (513,) OK
-        print(t.shape)   # (2,)   OK
-        print(Sxx.shape) # (513, 2)         
-        '''
+        
+        
         ##  Initialization after computation of first chunk spectrogram , ny et ntIm are previously defined, but NOT ymax and ymin
         ## We reverse the chunks only after taking the spectrogram: 
         t2= t[::-1]
@@ -604,7 +481,7 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
             from matplotlib.Axes import specgram
             
             
-            NFFT:  Length of the FFT used, (eventually zero padded )
+        NFFT:  Length of the FFT used, (eventually zero padded )
         """
         
         ## Sampling frequency of the t time series:  in order to have frequency in Hertz while time is in ms: 
@@ -628,53 +505,80 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
         t = t*1000
         return t, f, Sxx
         
-        
+   
     def computeSpectgram_mpl(self, tSignalChunk, ySignalChunk, Nwin, PropOverlap=0):
+        ## NOT USED YET... but we could use it to compare.     
         """Axes.specgram(x, NFFT=None, Fs=None, Fc=None, detrend=None, window=None, noverlap=None, cmap=None, xextent=None, pad_to=None, sides=None, scale_by_freq=None, mode=None, scale=None, vmin=None, vmax=None, *, data=None, **kwargs)
         https://matplotlib.org/api/_as_gen/matplotlib.axes.Axes.specgram.html
         """        
         pass
     
-            
+    def itIsTheEnd(self):
+        ''' 
+        Return a boolean value that says if the end of the signal is reach. 
+        
+        Criterion 1 : is the two extremities of the last signal chunk is the same point ?
+        '''
+        criterion1 = self.tdata[0][-1]  == self.tdata[0][0] 
+        
+        ## criterion2 = Signal.isEndReach() 
+        
+        return criterion1
+    
+        
     def sendDataToUpdate(self):   
         '''  blablabla    
         
         tSignalChunk :  time of original signal chunk 
         tImChunk     :  time of spectrogram image chunk
         '''
-        
-        
-
-        spectrChunkEnd = self.tdata[0][0]
-        tSignalEnd = self.Signal.tSignal[-1]
-        
-        notEnd = spectrChunkEnd < tSignalEnd
-        
-
-        print(spectrChunkEnd)  # 413
-        print(tSignalEnd)  #  90999 ms
-        print(notEnd)
-        
-        if spectrChunkEnd> 90402.0 :
-            print('stop')        
-        if notEnd==False: 
-            print('stop')
+        ntIm = self.ntIm
+        while True:  
             
-        while notEnd:            
-            index = int(  self.getRightChunkLeftPoint(self.tdata, self.ntIm)/self.dt ) 
-            print(index) #  must advance by step of ntIm=2       ***********
+            ## A criterion fo End detection is called
+            if self.itIsTheEnd(): 
+                ## pause for 2 min before closing
+                print('----------  End of signal is reach: it will be closed in 2 minutes  -------------')
+                time.sleep(120)
+                #sys.exit()
+                break 
+            
+            
+            index = int(  self.getRightChunkLeftPoint(self.tdata, ntIm)/self.dt ) 
+            #print(index) #   advance by step of ntIm
  
             tSignalChunk, ySignalChunk= self.Signal.returnSignalChunk(index, self.nt, 'non-reversed')
             tImChunk, fImChunk, SChunk = self.computeSpectgram_scipy( tSignalChunk, ySignalChunk)
             
+            ##  For the last image, in case the total length of ySignal is not a multiple of ntIm
+            if len(tImChunk) < ntIm:             
+                new_tImChunk = zeros([ntIm])          # shape = (ntIm,)
+                new_SChunk = zeros([self.ny, ntIm])   # shape = (ny, ntIm)
+                print(new_tImChunk.shape) 
+                print(new_SChunk.shape)
+                
+                print(tImChunk.shape) 
+                print(SChunk.shape)
+                
+                new_tImChunk[: len(tImChunk)]  = tImChunk
+                new_SChunk[:, :len(tImChunk)]  = SChunk
+
+                print(new_tImChunk.shape) 
+                print(new_SChunk.shape)
+                
+                tImChunk = new_tImChunk
+                SChunk = new_SChunk
+                
             ## "yield" returns a generator for a 3-tuple to make them an image object 
             yield tImChunk, fImChunk, SChunk 
     
 
     def update(self, data):         
-        ##  data is get from sendDataToUpdate throught the FuncAnimation function  , data = tChunk, fChunk, SChunk
-        ## The deque tdata contains maxt/dt points, that means maxt/(dt*nt) chunks of nt points    
-        ## We assume   Chunks to be in reversed-time order 
+        '''  
+        data is get from sendDataToUpdate throught the FuncAnimation function  , data = tChunk, fChunk, SChunk
+        The deque tdata contains maxt/dt points, that means maxt/(dt*nt) chunks of nt points    
+        We assume   Chunks to be in reversed-time order 
+        '''
         
         ## format check 
         if(len(data) == 3) : 
@@ -691,19 +595,7 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
             tChunk = tChunk.T
         if SChunk.shape[0] !=self.ntIm:   
             SChunk = SChunk.T      
-            
-  
-            if SChunk.shape[0]!=self.ntIm  : 
-                print(len(tChunk))     #  1  *********
-                print(tChunk[-1])   # 150.0
-                print(tChunk[0])    # 150.0
-                print(self.tdata[0][0])
-                print(self.Signal.tSignal[-1])
-                
-                
-                
             assert SChunk.shape[1]==self.ny
-            #------------
             
         ## check the time -reversed order. 
         if tChunk[-1]> tChunk[0]: 
@@ -712,25 +604,14 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
 
         ## In the case of the spectrogram : each tChunk time begins to 0, because the spectrogram does not take tChunk into account but only fs, i.e. ds.    
         ## self.tdata[0][0] is the max value of the previous tChunk. The current tChunk is added after it. 
-        
     
-        ##  WEIRD BUG ????  !!!!!        
-        '''
-        #tChunk +=self.tdata[0][0]    # BIZRRE SEMBLE MODIFIER AUSSI tdata et pas que tChunk !!! 
-        tChunk +=caca                # CETTE OPERATION MODIFIE self.tdata[0] !!!!    ?????   MAIS PKOI !!???????
-        #tChunk = tChunk + caca       #  OK  CTTE OPERATION NE MODIFIE PAS  self.tdata[0]   
-        print(self.tdata[0])         # 
-        caca = self.tdata[0][0]       # 
-        print(type(caca))               #   'numpy.float64'
-        print(self.tdata[0])         # [0.413 0.15 ]   OK
-        print(caca)                 # 0.413   OK
-        print(tChunk )               #   [0.413 0.15 ]
-        '''        
+        ## There is a bug if I try:  tChunk += self.tdata[0][0],   tdata itself was modified by incrementing tChunk !!
+        ## No bug with this simple syntax... 
+        tChunk = tChunk + self.tdata[0][0]         
         
-        tChunk = tChunk + self.tdata[0][0]         # OK NE MODIFIE PAS tdata  Mais utiliser '+=' ne fonctionne pas correctement !!  
-        self.tdata, self.Sdata = self.updateDeque(self.tdata, self.Sdata, [tChunk,SChunk] )   # ICI on ajuste deja les axes...  ********
+        ## axes adjustments   
+        self.tdata, self.Sdata = self.updateDeque(self.tdata, self.Sdata, [tChunk,SChunk] )     #*  SHOULD BE MOVED *****
 
-        
         ## concatenation         
         tConcat = concatenateDeque(self.tdata, 1)
         SConcat = concatenateDeque(self.Sdata, self.ny)
@@ -742,52 +623,9 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
         ntIm = self.ntIm 
         dt = self.dt
         assert len(tConcat)%ntIm == 0
-        
-        '''# pour tester  --- 
-        nD =  int(len(tConcat)/ntIm)
-        dt = self.dt 
-        self.ax.set_xlim( tConcat[0], tConcat[0]+ nD*ntIm*dt) 
-        '''
-
-        
-        self.ax.set_xlim( tConcat[0], tConcat[0]+ self.maxt) 
-        #self.ax.set_xlim( self.tdata[-1][-1], self.tdata[-1][-1] + self.maxt)   #  self.tdata[-1] : the most left chunk :
-        #self.ax.set_xlim( self.tdata[-1][-1], self.tdata[-1][-1] + nD*ntIm*dt)  
-        
+              
+        self.ax.set_xlim( tConcat[0], tConcat[0]+ self.maxt)         
         self.ax.set_ylim(self.ymin, self.ymax)  
-        
-        '''
-        #---- 
-        #  si tConcat[-1]  continue de grimper: 
-        
-        if len(tConcat) ==8: 
-            self.tcmax = tConcat[-1]
-        elif  len(tConcat) >8:    
-            if tConcat[-1] > self.tcmax : 
-                tcmax = tConcat[-1]
-                print('tConcat[-1] max =%s'%tcmax)
-        #----
-        '''
-        
-        print(tConcat[0])  # 0.15 au lieu de 0 ..... bof   ***???
-        print( tConcat[-1])   # 0.826
-        print(tConcat[0]+ self.maxt)
-        #print( tConcat)      # OK croissant , sans se repeter. 
-        print( tConcat.shape) 
-        print(SConcat.shape) # (4, 513)      
-
-        
-        #-------------------
-        '''
-        if nD ==10:
-            plt.clf
-            plt.pcolormesh(tConcat, self.fdata, SConcat.T)
-            plt.show()
-        '''
-        #------------------
-        
-
-
         self.image.set_data(  SConcat.T )    
         extent = ( tConcat[0], tConcat[-1], self.fmin, self.fmax )
         self.image.set_extent(extent)   
@@ -808,31 +646,91 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
         self.update(data)
         plt.show()        
 
-    def displayFigure(self,tSignal, ySignal,t, f, Sxx):
-        '''
-        Only for testing 
-        We simply display signal and spectrogram for a static first chunk of signal data. 
-         Time axis of signal and spectre are not properly aligned: very ugly but not a problem for a simple test 
-        '''
+## ====================================================================================
+##   Test functions 
+## ====================================================================================
+def test_displayFigure(tSignal, ySignal,t, f, Sxx):
+    '''
+    Only for testing 
+    It simply displays signal and spectrogram for a static first chunk of signal data. 
+     Time axis of signal and spectre are not properly aligned: very ugly but not a problem for a simple test 
+    '''
+    ## y limit in the plot
+    ymin =0.5 # Hz
+    ymax =50  # Hz 
+    #fs = 1000/dt # Sampling frequency of the t time series. Defaults to 1.0.   [Hz]  --->  1kHz 
 
-        ymin =self.ymin # 0.5 # Hz
-        ymax = self.ymax #50  # Hz 
-        #fs = 1000/dt # Sampling frequency of the t time series. Defaults to 1.0.   [Hz]  --->  1kHz 
-        
-        plt.close()
-        
-        plt.figure(1)
-        plt.subplot(211)
-        plt.plot(tSignal, ySignal)
-        ax=plt.subplot(212)
-        plt.pcolormesh(t, f, Sxx, shading='gouraud' )
-        plt.ylim(ymin,ymax )
-        plt.show()
 
-        
-            
+    plt.close()
+    plt.clf 
+
+    plt.figure(1)    
+    plt.plot(tSignal, ySignal)
+    
+    plt.figure(2)
+
+    ## the one we used in update() for now
+    ## return an AxisImage object
+    ## no interpolation or shading (which would be prettier)
+    ax1=plt.subplot(311)
+    extent = ( t[0], t[-1], f[0], f[-1] )
+    #print(extent)
+    image = ax1.pcolorfast(Sxx )  
+    ax1.set_ylim(ymin,ymax )     # and not f[0], f[-1]
+    image.set_extent(extent)       
+    
+    ## returns a collections.QuadMesh object:  
+    ## works, , but difficult to adapt since it DOES NOT WORK with AxisImage
+    ax2=plt.subplot(312)
+    plt.pcolormesh(t, f, Sxx, shading='gouraud' )
+    plt.ylim(ymin,ymax ) 
+ 
+    
+    ## return an AxisImage object; and is slower than pcolorfast()
+    ## But it allows interpolation
+    # affichage le long de l'axes des y ne MARCHE PAS !!                  ******************  
+    ax3=plt.subplot(313)
+    extent = ( t[0], t[-1], f[0], f[-1] )
+    print(extent)
+    image = ax3.imshow(Sxx, extent = extent, interpolation='gaussian')  
+    
+    ax3.set_xlim(t[0], t[-1])
+    ax3.set_ylim(ymin,ymax )    # and not f[0], f[-1]
+    image.set_extent(extent)   
+    
+    plt.show()
+
+def testMainSpectDisplay():
+    '''
+    It doesnt use spectro.update method 
+    To test display with imshow, or pcolormesh, or pcolorfast
+    '''
+    maxt = 6000 ; ntSignal = 600;  ny = 513
+    Signal = returnOurSignal()     
+    spectro = RTspectgram(Signal, ntSignal, ny, maxt)
+    
+    tSignalChunk, ySignalChunk= Signal.returnSignalChunk(0, ntSignal, 'non-reversed')
+    tImChunk, fImChunk, SChunk = spectro.computeSpectgram_scipy( tSignalChunk, ySignalChunk)
+    
+    ## to show:  the signal , and the spectrogram with imshow, or pcolormesh, or pcolorfast
+    test_displayFigure(tSignalChunk, ySignalChunk,tImChunk, fImChunk, SChunk)  
+
+def testSinus():
+    ''' Test plotting of a simple fuction (a sinus) '''
+    dt = 0.1
+    maxt = 4*pi
+    scopeSinus = realTimePlot_fct(maxt, dt)
+    scopeSinus.showAnimation()
+
+def testMain():
+    ''' To test update(), without using animation '''
+    maxt = 6000 ; ntSignal = 600;  ny = 513
+    Signal = returnOurSignal()
+    spectro = RTspectgram(Signal, ntSignal, ny, maxt)
+    spectro.test_update()
+                
 ### =========================================================================================
-###  main 
+###  Main 
 ### =========================================================================================
 def returnOurSignal():
     '''return the channel #0 of an EEG extracted from an EDF file that has been picked on physionet.org 
@@ -843,15 +741,12 @@ def returnOurSignal():
     fileEDF = 'Subject00_1.edf'
     datapath = 'C:/Users/Moi2/Documents/DONNEES/EEG_physionet/EEG_arithmeticTasks/'
     iChan =0
-    Signal = EEG_EDFsignal(iChan,fileEDF, datapath )
+    Signal = sC.EEG_EDFsignal(iChan,fileEDF, datapath )
     return Signal
     
-def testMain():
-    maxt = 6000 ; ntSignal = 600;  ny = 513
-    Signal = returnOurSignal()
-    spectro = RTspectgram(Signal, ntSignal, ny, maxt)
-    spectro.test_update()
+
   
+     
 def plotEDFSignal_main():
     '''  Display an EDF signal in real-time, 
          Use double queue data structures '''
@@ -878,37 +773,6 @@ def main():
 if __name__ == '__main__' :
     main()
     
-'''
-## Affichage RT du spectrogramme  
-maxt = 6000 # ms en principe,
-nt = 600;  Nwin=2 # 3  , # acceptable je pense.  Mais il faudrait refondre l'affichage apres chaque iteration
-Prop = 0.5 
-
-Signal = EEG_EDFsignal(iChan,fileEDF, datapath )
-
-spectro = RTspectgram(Signal, nt, maxt)
-
-## Affichage du spectrogramme de maniere statique 
-maxt = 6000 # ms en principe,
-nt = 600;  Nwin=2 # 3  , # acceptable je pense.  Mais il faudrait refondre l'affichage apres chaque iteration
-Prop = 0.5 
-
-Signal = EEG_EDFsignal(iChan,fileEDF, datapath )
-
-spectro = RTspectgram(Signal, nt, maxt)
-tSignalChunk, ySignalChunk= Signal.returnSignalChunk(index, nt, 'non-reversed')
-
-spectro.computeSpectgram(tSignalChunk, ySignalChunk, Nwin, Prop)
-spectro.displayFigure(tSignalChunk, ySignalChunk,t, f, Sxx)
-
-'''
-
-
-##=======-----  sinus:  for testing --------------------------------------------
-'''
-dt = 0.1
-maxt = 4*pi
-scopeSinus = realTimePlot_fct(maxt, dt)
-scopeSinus.showAnimation()
-'''
+    #testMainSpectDisplay()
+    
 
