@@ -32,7 +32,7 @@ import signalClass as sC
 
 
  
-### ================================================================================
+### =================================================================================
     
 ### deque handling : 
 def concatenateDeque(D, ny):
@@ -540,8 +540,8 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
                 ## pause for 2 min before closing
                 print('----------  End of signal is reach: it will be closed in 2 minutes  -------------')
                 time.sleep(120)
-                #sys.exit()
-                break 
+                sys.exit()
+                #break 
             
             
             index = int(  self.getRightChunkLeftPoint(self.tdata, ntIm)/self.dt ) 
@@ -554,18 +554,10 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
             if len(tImChunk) < ntIm:             
                 new_tImChunk = zeros([ntIm])          # shape = (ntIm,)
                 new_SChunk = zeros([self.ny, ntIm])   # shape = (ny, ntIm)
-                print(new_tImChunk.shape) 
-                print(new_SChunk.shape)
-                
-                print(tImChunk.shape) 
-                print(SChunk.shape)
                 
                 new_tImChunk[: len(tImChunk)]  = tImChunk
                 new_SChunk[:, :len(tImChunk)]  = SChunk
-
-                print(new_tImChunk.shape) 
-                print(new_SChunk.shape)
-                
+               
                 tImChunk = new_tImChunk
                 SChunk = new_SChunk
                 
