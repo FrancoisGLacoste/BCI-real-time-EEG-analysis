@@ -15,6 +15,7 @@ WARNING: THE SIGNAL OBJEcT of EEG_EDFsignal class is doomed to be thoroughly mod
 ## to override an abstract method of an abstract class : It uses a decorator. 
 from abc import ABCMeta, abstractmethod    
 import time 
+import sys
 from collections import deque               
 
 import numpy as np
