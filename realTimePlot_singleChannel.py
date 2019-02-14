@@ -33,7 +33,7 @@ import signalClass as sC
 
 
  
-### =================================================================================
+### ================================================================================
     
 ### deque handling : 
 def concatenateDeque(D, ny):
@@ -132,8 +132,8 @@ class baseRealTimePlot(metaclass=ABCMeta):
         self.fig, self.ax = plt.subplots()   
         self.ax.set_ylim(self.ymin , self.ymax)
         self.ax.set_xlim(0, self.maxt)        
-
         
+        ## titles and axis labels have to be set in derived classes         
 
     def setDim(self, dim):
         
@@ -177,7 +177,6 @@ class baseRealTimePlot(metaclass=ABCMeta):
         t0 = tdata[-1][-1] 
         t1 = tdata[0][0]
 
-        #if self.dt * len(tdata ) * nt >= self.maxt:   # NE FONCTIONNE PAS avec dt = dtIm et nt = ntIm .  ****        
         if t1 - t0 >=self.maxt:
             assert len(ydata)==len(tdata ) 
             tdata.pop()            
@@ -243,7 +242,7 @@ class baseRealTimePlot(metaclass=ABCMeta):
 ### ================================================================================
 
 ##===========================================================================
-class realTimePlot():       # WORKS   
+class realTimePlot():     
     """ draw the animation of a signal point by point (and not chunk by chunk)    """
     def __init__(self, maxt=100, dt=0.1, ymin = -1, ymax = 1):  
         nt=1
@@ -251,7 +250,7 @@ class realTimePlot():       # WORKS
         
   
 ### ================================================================================
-class realTimePlot_fct( realTimePlot):      # WORKS  
+class realTimePlot_fct( realTimePlot):    
         
     def sendDataToUpdate(self):
         '''return the next point (t, y(t)) of myFunction()
@@ -269,7 +268,7 @@ def myFunction(x):
 
 ### ======================================================
 
-class realTimePlotSignal( baseRealTimePlot): #  WORKS for (nt>= 1 ) when Signal is properly provided
+class realTimePlotSignal( baseRealTimePlot): 
     """
      For signal (  For example:  EEG from EDF file )
      Show in real-time the signal, either point by point (nt=1) or chunk by chunk (nt>1)
@@ -279,6 +278,7 @@ class realTimePlotSignal( baseRealTimePlot): #  WORKS for (nt>= 1 ) when Signal 
      The object Signal is provided via parameters :  
      Its required attributes are tSignal, ySignal, 
     """
+    
     def __init__(self,Signal, nt=50, maxt=5000):
         
         ## baseRealTimePlot initializer
@@ -358,22 +358,23 @@ class realTimePlotSignal( baseRealTimePlot): #  WORKS for (nt>= 1 ) when Signal 
 
 ### ==============================================================================================
 
-class realTimePlotSignal_EDF( realTimePlotSignal):        # WORKS WELL WHEN ONLY A SINGLE CHANNEL, DOES NOT REALLY SUPPORT MULTIPLE CHANNELS YET. 
+class realTimePlotSignal_EDF( realTimePlotSignal):       
     """
+    It works well for signals that have only a single channel. 
+    
+    For version that deals with multi-channel signals: see RTmultiChannels.py file. 
     """
 
     def __init__(self, nt=50, maxt=5000, iChan =0,fileEDF = 'Subject00_1.edf', datapath = 'C:/Users/Moi2/Documents/DONNEES/EEG_physionet/EEG_arithmeticTasks/'):
        
         ## EEG_EDFsignal instance : An attribute of the class realTimePlot_EDF
-        Signal = EEG_EDFsignal(iChan,fileEDF ,datapath )    
-        super().__init__(Signal, nt, maxt )  
-  
+        Signal = sC.EEG_EDFsignal(iChan,fileEDF ,datapath )    
+        super().__init__(Signal, nt, maxt )
 
-
-
+    
 ### ==============================================================================================
-### =============================================================================
-class RTspectgram(baseRealTimePlot):                # en construction **************************************
+### ==============================================================================================
+class RTspectgram(baseRealTimePlot):            
     """
     for any signal, not only EEG EDF file. 
     
@@ -385,6 +386,7 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
     self.ntIm  is only introduced with this class. It is not included in baseRealTimePlot
     (ntIm is to be use instead of nt in several places. )
     ntIm :  length in time of spectrogram image 
+    
     """
   
     def __init__(self, Signal, nt=600, ny = 512, maxt=6000, Nwin =2):
@@ -393,9 +395,12 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
         ntSpec:  length of image chunk (i.e. chunk of spectrogram image)
         
         ny :  height of the spectrogram image.  
+        
+        Signal: an object that has :  tSignal, ySignal, selectedChannel attributes
+        Signal.tSignal and Signal.ySignal are 1-D arrays 
         '''
     
-        ## Signal can be anything as long as it has tSignal and ySignal 1-D arrays as attributes. 
+        ## Check the attributes of the Signal object. 
         assert hasattr(Signal, 'tSignal') and hasattr(Signal, 'ySignal')
         self.Signal = Signal
         
@@ -427,23 +432,24 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
         self.fmin = min(f)
         self.fdata = f
         
-        ## pcolorfast is faster than pcolormesh, but without shading or interpolation 
+        ## pcolorfast is faster than imshow or pcolormesh, but it does not have shading or interpolation 
         ## returns an image.AxesImage object 
         self.image = self.ax.pcolorfast(t,f , Sxx )    
+        self.ax.set_xlabel('t        [ms]')
+        self.ax.set_ylabel(' frequency     [Hz]')
+        self.ax.set_title('Channel: %s'% Signal.selectedChannel ) 
 
-        self.ax.set_xlim( 0,  self.maxt )   #        
-        
-        ## the extent of the data we want to display (apriori not the same as self.fmin and self.fmax)
+        ## the extent of the data we want to display (ymin and ymax : apriori not the same as self.fmin and self.fmax)
         self.ax.set_ylim(self.ymin, self.ymax)          
-        
+        self.ax.set_xlim( 0,  self.maxt )   #        
+    
         ##  extend of actual data.  fmin = min(f) , and fmax = max(f)  
         extent = ( 0, self.ntIm*dt, self.fmin, self.fmax )  
         self.image.set_extent(extent) # extent is data axes (left, right, bottom, top) for making image plots    
-        
-        
+                
         ##  Initialization after computation of first chunk spectrogram , ny et ntIm are previously defined, but NOT ymax and ymin
         ## We reverse the chunks only after taking the spectrogram: 
-        t2= t[::-1]
+        t2 = t[::-1]
         f2 = f[::-1]
         S2 = Sxx[:,::-1]      
         
@@ -508,7 +514,7 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
         
    
     def computeSpectgram_mpl(self, tSignalChunk, ySignalChunk, Nwin, PropOverlap=0):
-        ## NOT USED YET... but we could use it to compare.     
+        ## NOT USED YET... but we could do it to compare.     
         """Axes.specgram(x, NFFT=None, Fs=None, Fc=None, detrend=None, window=None, noverlap=None, cmap=None, xextent=None, pad_to=None, sides=None, scale_by_freq=None, mode=None, scale=None, vmin=None, vmax=None, *, data=None, **kwargs)
         https://matplotlib.org/api/_as_gen/matplotlib.axes.Axes.specgram.html
         """        
@@ -540,6 +546,7 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
             if self.itIsTheEnd(): 
                 ## pause for 2 min before closing
                 print('----------  End of signal is reach: it will be closed in 2 minutes  -------------')
+                
                 time.sleep(120)
                 sys.exit()
                 #break 
@@ -555,10 +562,10 @@ class RTspectgram(baseRealTimePlot):                # en construction **********
             if len(tImChunk) < ntIm:             
                 new_tImChunk = zeros([ntIm])          # shape = (ntIm,)
                 new_SChunk = zeros([self.ny, ntIm])   # shape = (ny, ntIm)
-                
+               
                 new_tImChunk[: len(tImChunk)]  = tImChunk
                 new_SChunk[:, :len(tImChunk)]  = SChunk
-               
+
                 tImChunk = new_tImChunk
                 SChunk = new_SChunk
                 
@@ -693,6 +700,7 @@ def test_displayFigure(tSignal, ySignal,t, f, Sxx):
     
     plt.show()
 
+
 def testMainSpectDisplay():
     '''
     It doesnt use spectro.update method 
@@ -715,15 +723,19 @@ def testSinus():
     scopeSinus = realTimePlot_fct(maxt, dt)
     scopeSinus.showAnimation()
 
-def testMain():
+
+    
+def testMain_update():
     ''' To test update(), without using animation '''
     maxt = 6000 ; ntSignal = 600;  ny = 513
     Signal = returnOurSignal()
     spectro = RTspectgram(Signal, ntSignal, ny, maxt)
     spectro.test_update()
-                
+
+
+    
 ### =========================================================================================
-###  Main 
+###  Signal  , see also the signalClass file 
 ### =========================================================================================
 def returnOurSignal():
     '''return the channel #0 of an EEG extracted from an EDF file that has been picked on physionet.org 
@@ -736,21 +748,72 @@ def returnOurSignal():
     iChan =0
     Signal = sC.EEG_EDFsignal(iChan,fileEDF, datapath )
     return Signal
-    
 
+### =========================================================================================
+###  To run a monitor : with the use of multiprocessing or multithreading 
+### =========================================================================================
+def animProcessPool(obj):
+    '''  
+    To lauch showAnimation() for an object obj by using a process pool. 
+    It does not work if this function id placed inside the def animate_Processes()
+    '''
+    obj.showAnimation()
+
+def animate_Processes(objList, mode):
+    '''
+    Use separate processes to run objects contained in objList. 
+    
+    objList : list of multiple object that are assumed of compatible type.
+    '''
+    from multiprocessing import freeze_support, Pool, Process
+        
+    freeze_support()
+    if mode == 'Pool':
+        ## using a pool of maximum 4 processes to treat object in objList
+        Npool = min( 4, len(objList) )
+        
+        ## run processes that run animation for each object. 
+        with Pool(Npool) as p:
+            #processList = p.map(animProcessPool, objList)  
+            processList = p.map(lambda o: o.showAnimation(), objList)  
+            
+        
+    if mode == 'Process':
+        
+        ## list of processes that run the animation of each object 
+        processList = [Process(target= o.showAnimation ) for o in objList ]
+
+        for p in processList:   p.start()
+        for p in processList:   p.join()
   
-     
-def plotEDFSignal_main():
+  
+def animate_Threads(objList, mode):
+    '''
+    Use separate threads to run objects contained in objList. 
+    
+    objList : list of multiple object that are assumed of compatible type.
+    '''
+    import threading as th
+    
+    pass 
+
+
+### =========================================================================================
+###  Main 
+### =========================================================================================
+
+def mainPlotEDFSignal():
     '''  Display an EDF signal in real-time, 
          Use double queue data structures '''
-    maxt = 6000 # ms en principe,
-    nt = 600 ; iChan =0
     
-    RTplot = realTimePlotSignal_EDF( nt, maxt, iChan,fileEDF, datapath)
-    RTplot.showAnimation()  
-
+    ##   maxt = 6000  ;  ntSignal = 600  ##
     
-def main():
+    ## Signal is returned internally in the __init__ of the class 
+    ## and default parameters are the ones of this test 
+    signalPlot = realTimePlotSignal_EDF()
+    signalPlot.showAnimation()
+    
+def mainSpectro():
     ''' 
     Use 
     - Double queues as data structures 
@@ -762,10 +825,31 @@ def main():
     spectro = RTspectgram(Signal, ntSignal, ny, maxt)
     spectro.showAnimation()  
 
+def main():
+    maxt = 6000 ; ntSignal = 600;  ny = 513
+    nt=ntSignal # 60
+    Signal = returnOurSignal()
 
+    ## two tasks to run either on separate threads or on separate processes.
+    ## Here we use multithreading because multiprocessing will be used to deal with the 4 different channels: (one process per channel to treat)
+    
+    signalPlot=realTimePlotSignal(Signal, nt, maxt)
+    spectro = RTspectgram(Signal, ntSignal, ny, maxt)
+    
+    ## With multiprocessing :  it works as well with Pool than with Process classes. 
+    
+    mode ='Pool'  # 'Process'
+    animate_Processes([signalPlot,spectro], mode)  
+    
+    
+    #animate_Threads([signalPlot,spectro], mode) 
+    
 if __name__ == '__main__' :
+    #mainPlotEDFSignal()
+    
+    #mainSpectro()
+    
     main()
     
-    #testMainSpectDisplay()
-    
 
+   
