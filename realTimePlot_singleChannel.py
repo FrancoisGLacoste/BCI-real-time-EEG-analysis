@@ -534,7 +534,7 @@ class RTspectgram(baseRealTimePlot):
     
         
     def sendDataToUpdate(self):   
-        '''  blablabla    
+        '''      
         
         tSignalChunk :  time of original signal chunk 
         tImChunk     :  time of spectrogram image chunk
