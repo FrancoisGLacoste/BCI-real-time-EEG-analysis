@@ -8,10 +8,12 @@ Show an animation chunk by chunk (and hopefully in real-time) of
               2)   the spectrogram of the EEG, chunk by chunk in (hopefully) real-time   
 
 FOR NOW:
-THIS PROGRAM WORKS ONLY FOR EEG FILE in EDF FORMAT.  NOT WITH LSL yet. 
-But the purpose in the near future is to make it work with signals acquired through pyLSL.
+- It works for already acquired multichannel EEG  : NOT REAL-TIME 
 
-FOR NOW: THE REAL_TIME ANIMATION WORKS ONLY FOR SIGNAL WITH SINGLE CHANNEL. But it is to be extended to multichannel acquisition. 
-FOR NOW: it only plots either the signal in real-time, OR the spectrogram. 
+- THE REAL-TIME ANIMATION WORKS ONLY:
+             - FOR SIGNAL WITH SINGLE CHANNEL. It should be extended to multichannel acquisition. 
+             - When plotting  either the signal, OR the spectrogram, but not the both at the same time. 
 
-Data structure :  double queues (deque)
+I realize it already exists good library for this task: 
+             So I take it as a programming exercise. 
+             
